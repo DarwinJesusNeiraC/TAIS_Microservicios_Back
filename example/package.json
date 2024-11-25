@@ -1,0 +1,9 @@
+{
+    "name": "my-simple-service",
+    "version": "1.0.0",
+    "description": "Microservicio básico con AWS SAM",
+    "main": "app.js",
+    "author": "TuNombre",
+    "license": "MIT"
+  }
+  

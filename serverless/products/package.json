@@ -1,0 +1,15 @@
+{
+    "name": "productos-service",
+    "version": "1.0.0",
+    "description": "Microservicio de gestión de productos",
+    "main": "handler.js",
+    "dependencies": {
+      "aws-sdk": "^2.1372.0"
+    },
+    "devDependencies": {},
+    "scripts": {
+      "deploy": "serverless deploy",
+      "remove": "serverless remove"
+    }
+  }
+  

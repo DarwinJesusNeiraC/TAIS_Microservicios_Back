@@ -1,0 +1,52 @@
+service: productos-service
+frameworkVersion: '4'
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: us-east-1
+  environment:
+    PRODUCTS_TABLE: ProductosTable
+
+functions:
+  createProduct:
+    handler: handler.createProduct
+    events:
+      - httpApi:
+          path: /productos
+          method: POST
+
+  getProduct:
+    handler: handler.getProduct
+    events:
+      - httpApi:
+          path: /productos/{codigo}
+          method: GET
+
+  listProducts:
+    handler: handler.listProducts
+    events:
+      - httpApi:
+          path: /productos
+          method: GET
+
+  updateQuantity:
+    handler: handler.updateQuantity
+    events:
+      - httpApi:
+          path: /productos/{codigo}
+          method: PATCH
+
+resources:
+  Resources:
+    ProductosTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${env:PRODUCTS_TABLE}
+        AttributeDefinitions:
+          - AttributeName: codigo
+            AttributeType: S
+        KeySchema:
+          - AttributeName: codigo
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST

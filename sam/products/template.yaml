@@ -1,0 +1,64 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Productos Service
+
+Resources:
+  ProductosTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ProductosTable
+      AttributeDefinitions:
+        - AttributeName: codigo
+          AttributeType: S
+      KeySchema:
+        - AttributeName: codigo
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  CreateProductFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.createProduct
+      Runtime: nodejs18.x
+      CodeUri: .
+      Environment:
+        Variables:
+          PRODUCTS_TABLE: ProductosTable
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /productos
+            Method: post
+
+  GetProductFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.getProduct
+      Runtime: nodejs18.x
+      CodeUri: .
+      Environment:
+        Variables:
+          PRODUCTS_TABLE: ProductosTable
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /productos/{codigo}
+            Method: get
+
+  UpdateQuantityFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.updateQuantity
+      Runtime: nodejs18.x
+      CodeUri: .
+      Environment:
+        Variables:
+          PRODUCTS_TABLE: ProductosTable
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /productos/{codigo}
+            Method: patch

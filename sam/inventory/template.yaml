@@ -1,0 +1,50 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Inventario Service
+
+Resources:
+  NotasInventarioTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: NotasInventarioTable
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  CreateNotaEntradaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.createNotaEntrada
+      Runtime: nodejs18.x
+      CodeUri: .
+      Environment:
+        Variables:
+          INVENTORY_TABLE: NotasInventarioTable
+          PRODUCTS_SERVICE_URL: https://<api_gateway_url>/productos
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /inventario/nota_entrada
+            Method: post
+
+  CreateNotaSalidaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.createNotaSalida
+      Runtime: nodejs18.x
+      CodeUri: .
+      Environment:
+        Variables:
+          INVENTORY_TABLE: NotasInventarioTable
+          PRODUCTS_SERVICE_URL: https://<api_gateway_url>/productos
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /inventario/nota_salida
+            Method: post

@@ -1,0 +1,17 @@
+{
+    "name": "inventario-service",
+    "version": "1.0.0",
+    "description": "Microservicio de gestión de inventario",
+    "main": "handler.js",
+    "dependencies": {
+      "aws-sdk": "^2.1372.0",
+      "axios": "^1.4.0",
+      "uuid": "^9.0.0"
+    },
+    "devDependencies": {},
+    "scripts": {
+      "deploy": "serverless deploy",
+      "remove": "serverless remove"
+    }
+  }
+  

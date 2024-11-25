@@ -1,0 +1,13 @@
+
+{
+  "name": "products-service",
+  "version": "1.0.0",
+  "description": "Products management service",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "aws-sdk": "^2.1409.0"
+  }
+}
