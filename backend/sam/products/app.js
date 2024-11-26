@@ -24,9 +24,23 @@ exports.createProduct = async (event) => {
       return errorResponse(400, 'Todos los campos son obligatorios: codigo, nombre, cantidad, precio_unitario, categoria.');
     }
 
-    // Validar valores numéricos positivos
-    if (cantidad < 0 || precio_unitario < 0) {
-      return errorResponse(400, 'Los valores de cantidad y precio_unitario deben ser positivos.');
+    // Verificar si el código ya existe
+    const existingProduct = await dynamoDB.get({
+      TableName: PRODUCTS_TABLE,
+      Key: { codigo }
+    }).promise();
+
+    if (existingProduct.Item) {
+      return errorResponse(409, 'Código de producto duplicado');
+    }
+
+    // Validar valores numéricos positivos y formatos
+    if (!Number.isInteger(cantidad) || cantidad < 0) {
+      return errorResponse(400, 'La cantidad debe ser un número entero positivo.');
+    }
+
+    if (typeof precio_unitario !== 'number' || precio_unitario < 0 || !(/^\d+(\.\d{0,2})?$/).test(precio_unitario.toString())) {
+      return errorResponse(400, 'El precio unitario debe ser un número positivo con máximo 2 decimales.');
     }
 
     // Preparar el producto
@@ -122,8 +136,8 @@ exports.updateQuantity = async (event) => {
       return errorResponse(400, 'El parámetro "codigo" y un valor numérico para "cantidad" son obligatorios.');
     }
 
-    if (cantidad < 0) {
-      return errorResponse(400, 'El valor de "cantidad" debe ser positivo.');
+    if (!Number.isInteger(cantidad) || cantidad < 0) {
+      return errorResponse(400, 'La cantidad debe ser un número entero positivo.');
     }
 
     // Actualizar la cantidad en DynamoDB
