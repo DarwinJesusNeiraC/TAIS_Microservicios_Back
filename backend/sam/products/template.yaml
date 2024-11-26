@@ -1,12 +1,13 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Productos Service
+Description: Products Microservice
 
 Resources:
-  ProductosTable:
+  # Tabla DynamoDB para los productos
+  ProductsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: ProductosTable
+      TableName: ProductsTable
       AttributeDefinitions:
         - AttributeName: codigo
           AttributeType: S
@@ -15,6 +16,13 @@ Resources:
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
+  # Definición de la API Gateway
+  ProductsApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: dev
+
+  # Lambda para crear un producto
   CreateProductFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -23,14 +31,16 @@ Resources:
       CodeUri: .
       Environment:
         Variables:
-          PRODUCTS_TABLE: ProductosTable
+          PRODUCTS_TABLE: ProductsTable
       Events:
-        ApiEvent:
+        CreateProductApi:
           Type: Api
           Properties:
             Path: /productos
             Method: post
+            RestApiId: !Ref ProductsApi
 
+  # Lambda para obtener un producto por código
   GetProductFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -39,14 +49,16 @@ Resources:
       CodeUri: .
       Environment:
         Variables:
-          PRODUCTS_TABLE: ProductosTable
+          PRODUCTS_TABLE: ProductsTable
       Events:
-        ApiEvent:
+        GetProductApi:
           Type: Api
           Properties:
             Path: /productos/{codigo}
             Method: get
+            RestApiId: !Ref ProductsApi
 
+  # Lambda para actualizar la cantidad de un producto
   UpdateQuantityFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -55,10 +67,11 @@ Resources:
       CodeUri: .
       Environment:
         Variables:
-          PRODUCTS_TABLE: ProductosTable
+          PRODUCTS_TABLE: ProductsTable
       Events:
-        ApiEvent:
+        UpdateQuantityApi:
           Type: Api
           Properties:
             Path: /productos/{codigo}
             Method: patch
+            RestApiId: !Ref ProductsApi

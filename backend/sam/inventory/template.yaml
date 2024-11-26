@@ -3,17 +3,10 @@ Transform: AWS::Serverless-2016-10-31
 Description: Inventario Service
 
 Resources:
-  NotasInventarioTable:
-    Type: AWS::DynamoDB::Table
+  InventarioApi:
+    Type: AWS::Serverless::Api
     Properties:
-      TableName: NotasInventarioTable
-      AttributeDefinitions:
-        - AttributeName: id
-          AttributeType: S
-      KeySchema:
-        - AttributeName: id
-          KeyType: HASH
-      BillingMode: PAY_PER_REQUEST
+      StageName: dev
 
   CreateNotaEntradaFunction:
     Type: AWS::Serverless::Function
@@ -31,6 +24,7 @@ Resources:
           Properties:
             Path: /inventario/nota_entrada
             Method: post
+            RestApiId: !Ref InventarioApi
 
   CreateNotaSalidaFunction:
     Type: AWS::Serverless::Function
@@ -48,3 +42,4 @@ Resources:
           Properties:
             Path: /inventario/nota_salida
             Method: post
+            RestApiId: !Ref InventarioApi
