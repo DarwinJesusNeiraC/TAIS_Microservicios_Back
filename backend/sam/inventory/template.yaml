@@ -1,45 +1,100 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Inventario Service
+Description: Inventory Management Service
+
+Parameters:
+  ProductsServiceUrl:
+    Type: String
+    Description: URL of the Products Service API
 
 Resources:
+  NotasInventarioTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: NotasInventarioTable
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: tipo
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+        - AttributeName: tipo
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+
   InventarioApi:
-    Type: AWS::Serverless::Api
+    Type: AWS::Serverless::HttpApi
     Properties:
       StageName: dev
+      CorsConfiguration:
+        AllowMethods: [POST]
+        AllowHeaders: ['Content-Type']
+        AllowOrigins: ['*']
+
+  InventoryFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:Query
+                Resource: !GetAtt NotasInventarioTable.Arn
 
   CreateNotaEntradaFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: app.createNotaEntrada
-      Runtime: nodejs18.x
+      Runtime: nodejs20.x
       CodeUri: .
+      Role: !GetAtt InventoryFunctionRole.Arn
       Environment:
         Variables:
-          INVENTORY_TABLE: NotasInventarioTable
-          PRODUCTS_SERVICE_URL: https://<api_gateway_url>/productos
+          INVENTORY_TABLE: !Ref NotasInventarioTable
+          PRODUCTS_SERVICE_URL: !Ref ProductsServiceUrl
       Events:
         ApiEvent:
-          Type: Api
+          Type: HttpApi
           Properties:
+            ApiId: !Ref InventarioApi
             Path: /inventario/nota_entrada
-            Method: post
-            RestApiId: !Ref InventarioApi
+            Method: POST
 
   CreateNotaSalidaFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: app.createNotaSalida
-      Runtime: nodejs18.x
+      Runtime: nodejs20.x
       CodeUri: .
+      Role: !GetAtt InventoryFunctionRole.Arn
       Environment:
         Variables:
-          INVENTORY_TABLE: NotasInventarioTable
-          PRODUCTS_SERVICE_URL: https://<api_gateway_url>/productos
+          INVENTORY_TABLE: !Ref NotasInventarioTable
+          PRODUCTS_SERVICE_URL: !Ref ProductsServiceUrl
       Events:
         ApiEvent:
-          Type: Api
+          Type: HttpApi
           Properties:
+            ApiId: !Ref InventarioApi
             Path: /inventario/nota_salida
-            Method: post
-            RestApiId: !Ref InventarioApi
+            Method: POST
+
+Outputs:
+  InventarioApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub https://${InventarioApi}.execute-api.${AWS::Region}.amazonaws.com/dev/
