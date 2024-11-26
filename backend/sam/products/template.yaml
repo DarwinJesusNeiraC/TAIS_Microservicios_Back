@@ -18,60 +18,117 @@ Resources:
 
   # Definición de la API Gateway
   ProductsApi:
-    Type: AWS::Serverless::Api
+    Type: AWS::Serverless::HttpApi
     Properties:
       StageName: dev
+      CorsConfiguration:
+        AllowMethods: [GET, POST, PATCH]
+        AllowHeaders: ['Content-Type']
+        AllowOrigins: ['*']
+
+  # Base Lambda role with DynamoDB permissions
+  ProductsFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:Scan
+                Resource: !GetAtt ProductsTable.Arn
 
   # Lambda para crear un producto
   CreateProductFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: app.createProduct
-      Runtime: nodejs18.x
+      Runtime: nodejs20.x
       CodeUri: .
+      Role: !GetAtt ProductsFunctionRole.Arn
       Environment:
         Variables:
-          PRODUCTS_TABLE: ProductsTable
+          PRODUCTS_TABLE: !Ref ProductsTable
       Events:
-        CreateProductApi:
-          Type: Api
+        CreateProduct:
+          Type: HttpApi
           Properties:
+            ApiId: !Ref ProductsApi
             Path: /productos
-            Method: post
-            RestApiId: !Ref ProductsApi
+            Method: POST
 
   # Lambda para obtener un producto por código
   GetProductFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: app.getProduct
-      Runtime: nodejs18.x
+      Runtime: nodejs20.x
       CodeUri: .
+      Role: !GetAtt ProductsFunctionRole.Arn
       Environment:
         Variables:
-          PRODUCTS_TABLE: ProductsTable
+          PRODUCTS_TABLE: !Ref ProductsTable
       Events:
-        GetProductApi:
-          Type: Api
+        GetProduct:
+          Type: HttpApi
           Properties:
+            ApiId: !Ref ProductsApi
             Path: /productos/{codigo}
-            Method: get
-            RestApiId: !Ref ProductsApi
+            Method: GET
+
+  # Lambda para listar productos
+  ListProductsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.listProducts
+      Runtime: nodejs20.x
+      CodeUri: .
+      Role: !GetAtt ProductsFunctionRole.Arn
+      Environment:
+        Variables:
+          PRODUCTS_TABLE: !Ref ProductsTable
+      Events:
+        ListProducts:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ProductsApi
+            Path: /productos
+            Method: GET
 
   # Lambda para actualizar la cantidad de un producto
   UpdateQuantityFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: app.updateQuantity
-      Runtime: nodejs18.x
+      Runtime: nodejs20.x
       CodeUri: .
+      Role: !GetAtt ProductsFunctionRole.Arn
       Environment:
         Variables:
-          PRODUCTS_TABLE: ProductsTable
+          PRODUCTS_TABLE: !Ref ProductsTable
       Events:
-        UpdateQuantityApi:
-          Type: Api
+        UpdateQuantity:
+          Type: HttpApi
           Properties:
+            ApiId: !Ref ProductsApi
             Path: /productos/{codigo}
-            Method: patch
-            RestApiId: !Ref ProductsApi
+            Method: PATCH
+
+Outputs:
+  ProductsApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub https://${ProductsApi}.execute-api.${AWS::Region}.amazonaws.com/dev/
