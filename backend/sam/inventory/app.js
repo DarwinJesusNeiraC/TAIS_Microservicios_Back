@@ -1,10 +1,9 @@
 const AWS = require('aws-sdk');
-const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
 
 const INVENTORY_TABLE = process.env.INVENTORY_TABLE;
-const PRODUCTS_SERVICE_URL = process.env.PRODUCTS_SERVICE_URL;
+const PRODUCTS_TABLE = process.env.PRODUCTS_TABLE;
 
 // Helper functions
 const errorResponse = (statusCode, message) => ({
@@ -61,6 +60,30 @@ const createInventoryNote = async (data, tipo) => {
   return nota;
 };
 
+const getProduct = async (codigo) => {
+  const result = await dynamoDB.get({
+    TableName: PRODUCTS_TABLE,
+    Key: { codigo }
+  }).promise();
+  
+  if (!result.Item) {
+    throw new Error(`Producto con código ${codigo} no encontrado`);
+  }
+  
+  return result.Item;
+};
+
+const updateProductQuantity = async (codigo, newQuantity) => {
+  await dynamoDB.update({
+    TableName: PRODUCTS_TABLE,
+    Key: { codigo },
+    UpdateExpression: 'set cantidad = :cantidad',
+    ExpressionAttributeValues: {
+      ':cantidad': newQuantity
+    }
+  }).promise();
+};
+
 // Create entrada note
 exports.createNotaEntrada = async (event) => {
   console.log('Iniciando creación de nota de entrada:', { body: event.body });
@@ -69,22 +92,13 @@ exports.createNotaEntrada = async (event) => {
     const data = JSON.parse(event.body);
     validateInput(data);
 
-    // Validate product exists
+    // Validate product exists and update quantity
     try {
-      await axios.get(`${PRODUCTS_SERVICE_URL}/${data.codigo}`);
+      const product = await getProduct(data.codigo);
+      await updateProductQuantity(data.codigo, data.cantidad);
     } catch (error) {
-      console.error('Error validando producto:', error);
-      return errorResponse(404, `Producto con código ${data.codigo} no encontrado`);
-    }
-
-    // Update product quantity
-    try {
-      await axios.patch(`${PRODUCTS_SERVICE_URL}/${data.codigo}`, { 
-        cantidad: data.cantidad 
-      });
-    } catch (error) {
-      console.error('Error actualizando cantidad del producto:', error);
-      return errorResponse(500, 'Error al actualizar el inventario del producto');
+      console.error('Error procesando producto:', error);
+      return errorResponse(404, error.message);
     }
 
     const nota = await createInventoryNote(data, 'entrada');
@@ -109,34 +123,23 @@ exports.createNotaSalida = async (event) => {
     const data = JSON.parse(event.body);
     validateInput(data);
 
-    // Get current product stock
+    // Get current product stock and validate
     let product;
     try {
-      const response = await axios.get(`${PRODUCTS_SERVICE_URL}/${data.codigo}`);
-      product = response.data;
-    } catch (error) {
-      console.error('Error obteniendo producto:', error);
-      return errorResponse(404, `Producto con código ${data.codigo} no encontrado`);
-    }
+      product = await getProduct(data.codigo);
+      if (product.cantidad < data.cantidad) {
+        return errorResponse(422, `Stock insuficiente. Stock actual: ${product.cantidad}`);
+      }
 
-    // Validate stock
-    if (product.cantidad < data.cantidad) {
-      return errorResponse(422, `Stock insuficiente. Stock actual: ${product.cantidad}`);
-    }
-
-    // Update product quantity
-    try {
-      await axios.patch(`${PRODUCTS_SERVICE_URL}/${data.codigo}`, {
-        cantidad: product.cantidad - data.cantidad
-      });
+      await updateProductQuantity(data.codigo, product.cantidad - data.cantidad);
     } catch (error) {
-      console.error('Error actualizando cantidad del producto:', error);
-      return errorResponse(500, 'Error al actualizar el inventario del producto');
+      console.error('Error procesando producto:', error);
+      return errorResponse(404, error.message);
     }
 
     const nota = await createInventoryNote(data, 'salida');
     console.log('Nota de salida creada exitosamente:', nota);
-
+ 
     return successResponse(201, {
       message: 'Nota de salida creada exitosamente',
       nota

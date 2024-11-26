@@ -3,9 +3,10 @@ Transform: AWS::Serverless-2016-10-31
 Description: Inventory Management Service
 
 Parameters:
-  ProductsServiceUrl:
+  ProductsTableName:
     Type: String
-    Description: URL of the Products Service API
+    Description: Name of the Products DynamoDB table
+    Default: ProductsTable
 
 Resources:
   NotasInventarioTable:
@@ -54,7 +55,11 @@ Resources:
                 Action:
                   - dynamodb:PutItem
                   - dynamodb:Query
-                Resource: !GetAtt NotasInventarioTable.Arn
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                Resource: 
+                  - !GetAtt NotasInventarioTable.Arn
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProductsTableName}
 
   CreateNotaEntradaFunction:
     Type: AWS::Serverless::Function
@@ -66,7 +71,7 @@ Resources:
       Environment:
         Variables:
           INVENTORY_TABLE: !Ref NotasInventarioTable
-          PRODUCTS_SERVICE_URL: !Ref ProductsServiceUrl
+          PRODUCTS_TABLE: !Ref ProductsTableName
       Events:
         ApiEvent:
           Type: HttpApi
@@ -85,7 +90,7 @@ Resources:
       Environment:
         Variables:
           INVENTORY_TABLE: !Ref NotasInventarioTable
-          PRODUCTS_SERVICE_URL: !Ref ProductsServiceUrl
+          PRODUCTS_TABLE: !Ref ProductsTableName
       Events:
         ApiEvent:
           Type: HttpApi
