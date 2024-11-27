@@ -1,1 +1,1 @@
-![Diagrama Arquitectura Microservicios Serverless-Copia de Diagrama drawio (1)](https://github.com/user-attachments/assets/15ef03f7-7eb3-4ab5-b6f1-730be35668a6)
+![Diagrama Arquitectura Microservicios Serverless-Copia de Diagrama drawio (2)](https://github.com/user-attachments/assets/0dd43776-3e97-4ef3-ba91-c68a05052e5f)
