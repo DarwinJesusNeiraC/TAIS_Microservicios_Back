@@ -1,7 +1,11 @@
+// Main module for handling inventory management operations
+// Manages product entries and exits through inventory notes
+
 const AWS = require('aws-sdk');
 const { v4: uuidv4 } = require('uuid');
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
 
+// DynamoDB table names from environment variables
 const INVENTORY_TABLE = process.env.INVENTORY_TABLE;
 const PRODUCTS_TABLE = process.env.PRODUCTS_TABLE;
 
@@ -28,6 +32,8 @@ const errorResponse = (error, statusCode = 400) =>
     error: error.message || error
   });
 
+// Validates incoming inventory note data
+// Checks for required fields and proper data types
 const validateInput = (data) => {
   const { fecha, codigo, cantidad } = data;
   
@@ -46,6 +52,8 @@ const validateInput = (data) => {
   return true;
 };
 
+// Creates a new inventory note record in DynamoDB
+// tipo parameter determines if it's an entry or exit note
 const createInventoryNote = async (data, tipo) => {
   const nota = {
     id: uuidv4(),
@@ -64,6 +72,8 @@ const createInventoryNote = async (data, tipo) => {
   return nota;
 };
 
+// Retrieves product information from DynamoDB
+// Throws error if product is not found
 const getProduct = async (codigo) => {
   const result = await dynamoDB.get({
     TableName: PRODUCTS_TABLE,
@@ -77,6 +87,8 @@ const getProduct = async (codigo) => {
   return result.Item;
 };
 
+// Updates product quantity in DynamoDB
+// Used after processing inventory notes
 const updateProductQuantity = async (codigo, newQuantity) => {
   await dynamoDB.update({
     TableName: PRODUCTS_TABLE,
@@ -88,17 +100,24 @@ const updateProductQuantity = async (codigo, newQuantity) => {
   }).promise();
 };
 
+// Main business logic for processing inventory notes
+// Handles both entry and exit operations
+// Updates product quantities and creates inventory records
 const processInventoryNote = async (data, tipo) => {
+  // Fetch current product state
   const product = await getProduct(data.codigo);
   
+  // Calculate new quantity based on operation type
   const newQuantity = tipo === 'entrada' 
     ? product.cantidad + data.cantidad
     : product.cantidad - data.cantidad;
 
+  // Prevent negative inventory for exit operations
   if (tipo === 'salida' && newQuantity < 0) {
     throw new Error(`Stock insuficiente. Stock actual: ${product.cantidad}`);
   }
 
+  // Update product and create inventory note
   await updateProductQuantity(data.codigo, newQuantity);
   const nota = await createInventoryNote(data, tipo);
   
@@ -112,6 +131,7 @@ const processInventoryNote = async (data, tipo) => {
   };
 };
 
+// Lambda handler for processing entry notes (increases inventory)
 exports.createNotaEntrada = async (event) => {
   try {
     const data = JSON.parse(event.body);
@@ -126,6 +146,7 @@ exports.createNotaEntrada = async (event) => {
   }
 };
 
+// Lambda handler for processing exit notes (decreases inventory)
 exports.createNotaSalida = async (event) => {
   try {
     const data = JSON.parse(event.body);
