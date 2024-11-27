@@ -3,128 +3,117 @@ const dynamoDB = new AWS.DynamoDB.DocumentClient();
 const PRODUCTS_TABLE = process.env.PRODUCTS_TABLE;
 
 /**
- * Helper: Responder con un error formateado.
+ * Response Helpers
  */
-const errorResponse = (statusCode, message) => ({
+const createResponse = (statusCode, data, message = null) => ({
   statusCode,
-  body: JSON.stringify({ error: message }),
+  body: JSON.stringify({
+    success: statusCode >= 200 && statusCode < 300,
+    data,
+    message,
+    timestamp: new Date().toISOString()
+  })
 });
 
+const successResponse = (data, message = null, statusCode = 200) => 
+  createResponse(statusCode, data, message);
+
+const errorResponse = (statusCode, message, error = null) => 
+  createResponse(statusCode, null, message);
+
 /**
- * Crear producto
+ * Validation Helpers
  */
-exports.createProduct = async (event) => {
-  console.log('Recibiendo solicitud para crear un producto:', event.body);
+const validateProduct = (product) => {
+  const { codigo, nombre, cantidad, precio_unitario, categoria } = product;
+  
+  if (!codigo || !nombre || !cantidad || !precio_unitario || !categoria) {
+    throw new Error('Todos los campos son obligatorios: codigo, nombre, cantidad, precio_unitario, categoria.');
+  }
 
-  try {
-    const { codigo, nombre, descripcion, cantidad, precio_unitario, categoria } = JSON.parse(event.body);
+  if (!Number.isInteger(cantidad) || cantidad < 0) {
+    throw new Error('La cantidad debe ser un número entero positivo.');
+  }
 
-    // Validar campos obligatorios
-    if (!codigo || !nombre || !cantidad || !precio_unitario || !categoria) {
-      return errorResponse(400, 'Todos los campos son obligatorios: codigo, nombre, cantidad, precio_unitario, categoria.');
-    }
-
-    // Verificar si el código ya existe
-    const existingProduct = await dynamoDB.get({
-      TableName: PRODUCTS_TABLE,
-      Key: { codigo }
-    }).promise();
-
-    if (existingProduct.Item) {
-      return errorResponse(409, 'Código de producto duplicado');
-    }
-
-    // Validar valores numéricos positivos y formatos
-    if (!Number.isInteger(cantidad) || cantidad < 0) {
-      return errorResponse(400, 'La cantidad debe ser un número entero positivo.');
-    }
-
-    if (typeof precio_unitario !== 'number' || precio_unitario < 0 || !(/^\d+(\.\d{0,2})?$/).test(precio_unitario.toString())) {
-      return errorResponse(400, 'El precio unitario debe ser un número positivo con máximo 2 decimales.');
-    }
-
-    // Preparar el producto
-    const product = {
-      codigo,
-      nombre,
-      descripcion: descripcion || '',
-      cantidad,
-      precio_unitario,
-      categoria,
-    };
-
-    // Guardar en DynamoDB
-    await dynamoDB.put({ TableName: PRODUCTS_TABLE, Item: product }).promise();
-
-    console.log('Producto creado exitosamente:', product);
-
-    return {
-      statusCode: 201,
-      body: JSON.stringify({ message: 'Producto creado exitosamente', product }),
-    };
-  } catch (error) {
-    console.error('Error al crear producto:', error);
-    return errorResponse(500, 'Hubo un error interno al crear el producto.');
+  if (typeof precio_unitario !== 'number' || precio_unitario < 0 || !(/^\d+(\.\d{0,2})?$/).test(precio_unitario.toString())) {
+    throw new Error('El precio unitario debe ser un número positivo con máximo 2 decimales.');
   }
 };
 
 /**
- * Obtener producto por código
+ * Database Helpers
  */
+const getProductByCode = async (codigo) => {
+  const result = await dynamoDB.get({ 
+    TableName: PRODUCTS_TABLE, 
+    Key: { codigo } 
+  }).promise();
+  return result.Item;
+};
+
+exports.createProduct = async (event) => {
+  console.log('Recibiendo solicitud para crear un producto:', event.body);
+
+  try {
+    const product = JSON.parse(event.body);
+    validateProduct(product);
+
+    const existingProduct = await getProductByCode(product.codigo);
+    if (existingProduct) {
+      return errorResponse(409, 'Código de producto duplicado');
+    }
+
+    await dynamoDB.put({ 
+      TableName: PRODUCTS_TABLE, 
+      Item: {
+        ...product,
+        descripcion: product.descripcion || ''
+      }
+    }).promise();
+
+    return successResponse(product, 'Producto creado exitosamente', 201);
+  } catch (error) {
+    console.error('Error al crear producto:', error);
+    return errorResponse(
+      error.statusCode || 500,
+      error.message || 'Hubo un error interno al crear el producto.'
+    );
+  }
+};
+
 exports.getProduct = async (event) => {
   console.log('Recibiendo solicitud para obtener producto:', event.pathParameters);
 
   try {
     const { codigo } = event.pathParameters;
-
     if (!codigo) {
       return errorResponse(400, 'El parámetro "codigo" es obligatorio.');
     }
 
-    // Consultar en DynamoDB
-    const result = await dynamoDB.get({ TableName: PRODUCTS_TABLE, Key: { codigo } }).promise();
-
-    if (!result.Item) {
+    const product = await getProductByCode(codigo);
+    if (!product) {
       return errorResponse(404, `Producto con código "${codigo}" no encontrado.`);
     }
 
-    console.log('Producto encontrado:', result.Item);
-
-    return {
-      statusCode: 200,
-      body: JSON.stringify(result.Item),
-    };
+    return successResponse(product);
   } catch (error) {
     console.error('Error al obtener producto:', error);
     return errorResponse(500, 'Hubo un error interno al obtener el producto.');
   }
 };
 
-/**
- * Listar productos
- */
 exports.listProducts = async () => {
   console.log('Recibiendo solicitud para listar productos');
 
   try {
-    // Consultar DynamoDB
     const result = await dynamoDB.scan({ TableName: PRODUCTS_TABLE }).promise();
-
-    console.log('Productos obtenidos:', result.Items);
-
-    return {
-      statusCode: 200,
-      body: JSON.stringify(result.Items),
-    };
+    return successResponse(result.Items);
   } catch (error) {
     console.error('Error al listar productos:', error);
     return errorResponse(500, 'Hubo un error interno al listar los productos.');
   }
 };
 
-/**
- * Actualizar cantidad de producto
- */
 exports.updateQuantity = async (event) => {
   console.log('Recibiendo solicitud para actualizar cantidad:', event.body);
 
@@ -140,7 +129,6 @@ exports.updateQuantity = async (event) => {
       return errorResponse(400, 'La cantidad debe ser un número entero positivo.');
     }
 
-    // Actualizar la cantidad en DynamoDB
     const result = await dynamoDB.update({
       TableName: PRODUCTS_TABLE,
       Key: { codigo },
@@ -149,12 +137,10 @@ exports.updateQuantity = async (event) => {
       ReturnValues: 'ALL_NEW',
     }).promise();
 
-    console.log('Cantidad actualizada exitosamente:', result.Attributes);
-
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ message: 'Cantidad actualizada exitosamente', product: result.Attributes }),
-    };
+    return successResponse(
+      result.Attributes, 
+      'Cantidad actualizada exitosamente'
+    );
   } catch (error) {
     console.error('Error al actualizar cantidad:', error);
     return errorResponse(500, 'Hubo un error interno al actualizar la cantidad del producto.');

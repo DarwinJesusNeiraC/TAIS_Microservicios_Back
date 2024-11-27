@@ -5,24 +5,28 @@ const dynamoDB = new AWS.DynamoDB.DocumentClient();
 const INVENTORY_TABLE = process.env.INVENTORY_TABLE;
 const PRODUCTS_TABLE = process.env.PRODUCTS_TABLE;
 
-// Helper functions
-const errorResponse = (statusCode, message) => ({
+// Response handlers
+const createResponse = (statusCode, body) => ({
   statusCode,
   headers: {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*'
   },
-  body: JSON.stringify({ error: message })
+  body: JSON.stringify(body)
 });
 
-const successResponse = (statusCode, data) => ({
-  statusCode,
-  headers: {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*'
-  },
-  body: JSON.stringify(data)
-});
+const successResponse = (data, message = 'Operation successful') => 
+  createResponse(200, {
+    success: true,
+    message,
+    data
+  });
+
+const errorResponse = (error, statusCode = 400) => 
+  createResponse(statusCode, {
+    success: false,
+    error: error.message || error
+  });
 
 const validateInput = (data) => {
   const { fecha, codigo, cantidad } = data;
@@ -84,69 +88,54 @@ const updateProductQuantity = async (codigo, newQuantity) => {
   }).promise();
 };
 
-// Create entrada note
-exports.createNotaEntrada = async (event) => {
-  console.log('Iniciando creación de nota de entrada:', { body: event.body });
+const processInventoryNote = async (data, tipo) => {
+  const product = await getProduct(data.codigo);
+  
+  const newQuantity = tipo === 'entrada' 
+    ? product.cantidad + data.cantidad
+    : product.cantidad - data.cantidad;
 
+  if (tipo === 'salida' && newQuantity < 0) {
+    throw new Error(`Stock insuficiente. Stock actual: ${product.cantidad}`);
+  }
+
+  await updateProductQuantity(data.codigo, newQuantity);
+  const nota = await createInventoryNote(data, tipo);
+  
+  return {
+    nota,
+    product: {
+      codigo: product.codigo,
+      previousQuantity: product.cantidad,
+      newQuantity
+    }
+  };
+};
+
+exports.createNotaEntrada = async (event) => {
   try {
     const data = JSON.parse(event.body);
     validateInput(data);
 
-    // Validate product exists and update quantity
-    try {
-      const product = await getProduct(data.codigo);
-      await updateProductQuantity(data.codigo, data.cantidad);
-    } catch (error) {
-      console.error('Error procesando producto:', error);
-      return errorResponse(404, error.message);
-    }
-
-    const nota = await createInventoryNote(data, 'entrada');
-    console.log('Nota de entrada creada exitosamente:', nota);
-
-    return successResponse(201, {
-      message: 'Nota de entrada creada exitosamente',
-      nota
-    });
+    const result = await processInventoryNote(data, 'entrada');
+    return successResponse(result, 'Nota de entrada creada exitosamente');
 
   } catch (error) {
     console.error('Error procesando nota de entrada:', error);
-    return errorResponse(400, error.message);
+    return errorResponse(error);
   }
 };
 
-// Create salida note
 exports.createNotaSalida = async (event) => {
-  console.log('Iniciando creación de nota de salida:', { body: event.body });
-
   try {
     const data = JSON.parse(event.body);
     validateInput(data);
 
-    // Get current product stock and validate
-    let product;
-    try {
-      product = await getProduct(data.codigo);
-      if (product.cantidad < data.cantidad) {
-        return errorResponse(422, `Stock insuficiente. Stock actual: ${product.cantidad}`);
-      }
-
-      await updateProductQuantity(data.codigo, product.cantidad - data.cantidad);
-    } catch (error) {
-      console.error('Error procesando producto:', error);
-      return errorResponse(404, error.message);
-    }
-
-    const nota = await createInventoryNote(data, 'salida');
-    console.log('Nota de salida creada exitosamente:', nota);
- 
-    return successResponse(201, {
-      message: 'Nota de salida creada exitosamente',
-      nota
-    });
+    const result = await processInventoryNote(data, 'salida');
+    return successResponse(result, 'Nota de salida creada exitosamente');
 
   } catch (error) {
     console.error('Error procesando nota de salida:', error);
-    return errorResponse(400, error.message);
+    return errorResponse(error);
   }
 };
