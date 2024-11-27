@@ -2,28 +2,25 @@ const AWS = require('aws-sdk');
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
 const PRODUCTS_TABLE = process.env.PRODUCTS_TABLE;
 
-/**
- * Response Helpers
- */
-const createResponse = (statusCode, data, message = null) => ({
+// Common response headers
+const headers = {
+  'Content-Type': 'application/json',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+  'Access-Control-Allow-Methods': 'OPTIONS,POST,GET,PUT'
+};
+
+// Response utility functions
+const buildResponse = (statusCode, data) => ({
   statusCode,
-  body: JSON.stringify({
-    success: statusCode >= 200 && statusCode < 300,
-    data,
-    message,
-    timestamp: new Date().toISOString()
-  })
+  headers,
+  body: JSON.stringify(data)
 });
 
-const successResponse = (data, message = null, statusCode = 200) => 
-  createResponse(statusCode, data, message);
+const successResponse = (data, statusCode = 200) => buildResponse(statusCode, { success: true, data });
+const errorResponse = (message, statusCode = 500) => buildResponse(statusCode, { success: false, error: message });
 
-const errorResponse = (statusCode, message, error = null) => 
-  createResponse(statusCode, null, message);
-
-/**
- * Validation Helpers
- */
+// Validation utility functions
 const validateProduct = (product) => {
   const { codigo, nombre, cantidad, precio_unitario, categoria } = product;
   
@@ -40,17 +37,13 @@ const validateProduct = (product) => {
   }
 };
 
-/**
- * Database Helpers
- */
-const getProductByCode = async (codigo) => {
-  const result = await dynamoDB.get({ 
-    TableName: PRODUCTS_TABLE, 
-    Key: { codigo } 
-  }).promise();
-  return result.Item;
+const validateQuantity = (cantidad) => {
+  if (!Number.isInteger(cantidad) || cantidad < 0) {
+    throw new Error('La cantidad debe ser un número entero positivo.');
+  }
 };
 
+// Main handlers
 exports.createProduct = async (event) => {
   console.log('Recibiendo solicitud para crear un producto:', event.body);
 
@@ -58,26 +51,24 @@ exports.createProduct = async (event) => {
     const product = JSON.parse(event.body);
     validateProduct(product);
 
-    const existingProduct = await getProductByCode(product.codigo);
-    if (existingProduct) {
-      return errorResponse(409, 'Código de producto duplicado');
+    const existingProduct = await dynamoDB.get({
+      TableName: PRODUCTS_TABLE,
+      Key: { codigo: product.codigo }
+    }).promise();
+
+    if (existingProduct.Item) {
+      return errorResponse('Código de producto duplicado', 409);
     }
 
     await dynamoDB.put({ 
       TableName: PRODUCTS_TABLE, 
-      Item: {
-        ...product,
-        descripcion: product.descripcion || ''
-      }
+      Item: { ...product, descripcion: product.descripcion || '' }
     }).promise();
 
-    return successResponse(product, 'Producto creado exitosamente', 201);
+    return successResponse({ message: 'Producto creado exitosamente', product }, 201);
   } catch (error) {
     console.error('Error al crear producto:', error);
-    return errorResponse(
-      error.statusCode || 500,
-      error.message || 'Hubo un error interno al crear el producto.'
-    );
+    return errorResponse(error.message, error.name === 'ValidationError' ? 400 : 500);
   }
 };
 
@@ -86,19 +77,15 @@ exports.getProduct = async (event) => {
 
   try {
     const { codigo } = event.pathParameters;
-    if (!codigo) {
-      return errorResponse(400, 'El parámetro "codigo" es obligatorio.');
-    }
+    if (!codigo) return errorResponse('El parámetro "codigo" es obligatorio.', 400);
 
-    const product = await getProductByCode(codigo);
-    if (!product) {
-      return errorResponse(404, `Producto con código "${codigo}" no encontrado.`);
-    }
+    const result = await dynamoDB.get({ TableName: PRODUCTS_TABLE, Key: { codigo } }).promise();
+    if (!result.Item) return errorResponse(`Producto con código "${codigo}" no encontrado.`, 404);
 
-    return successResponse(product);
+    return successResponse(result.Item);
   } catch (error) {
     console.error('Error al obtener producto:', error);
-    return errorResponse(500, 'Hubo un error interno al obtener el producto.');
+    return errorResponse('Hubo un error interno al obtener el producto.');
   }
 };
 
@@ -110,7 +97,7 @@ exports.listProducts = async () => {
     return successResponse(result.Items);
   } catch (error) {
     console.error('Error al listar productos:', error);
-    return errorResponse(500, 'Hubo un error interno al listar los productos.');
+    return errorResponse('Hubo un error interno al listar los productos.');
   }
 };
 
@@ -121,13 +108,8 @@ exports.updateQuantity = async (event) => {
     const { codigo } = event.pathParameters;
     const { cantidad } = JSON.parse(event.body);
 
-    if (!codigo || typeof cantidad !== 'number') {
-      return errorResponse(400, 'El parámetro "codigo" y un valor numérico para "cantidad" son obligatorios.');
-    }
-
-    if (!Number.isInteger(cantidad) || cantidad < 0) {
-      return errorResponse(400, 'La cantidad debe ser un número entero positivo.');
-    }
+    if (!codigo) return errorResponse('El parámetro "codigo" es obligatorio.', 400);
+    validateQuantity(cantidad);
 
     const result = await dynamoDB.update({
       TableName: PRODUCTS_TABLE,
@@ -137,12 +119,12 @@ exports.updateQuantity = async (event) => {
       ReturnValues: 'ALL_NEW',
     }).promise();
 
-    return successResponse(
-      result.Attributes, 
-      'Cantidad actualizada exitosamente'
-    );
+    return successResponse({ 
+      message: 'Cantidad actualizada exitosamente', 
+      product: result.Attributes 
+    });
   } catch (error) {
     console.error('Error al actualizar cantidad:', error);
-    return errorResponse(500, 'Hubo un error interno al actualizar la cantidad del producto.');
+    return errorResponse(error.message, error.name === 'ValidationError' ? 400 : 500);
   }
 };
